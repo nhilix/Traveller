@@ -91,6 +91,7 @@ class Orbit(object):
    body = None
 
    def generateWorld( self ):
+      
 
 
 class SolarObjectBase(object):
