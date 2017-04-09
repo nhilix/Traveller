@@ -79,7 +79,6 @@ class SolarSystem():
    def generateStarSystemFeatures( self ):
       self.systemNature()
       self.createStars()
-      self.zoneDetermination()
       self.capturedPlanetsAndEmptyOrbits()
       self.gasGiants()
       self.planetoids()
@@ -89,12 +88,12 @@ class SolarSystem():
       self.placePlanetoids()
 
    def generateWorlds( self ):
-      for orbit in self.orbits:
+      for orbit in self.primary_star.orbits:
          if not orbit.occupied:
             orbit.generateWorld()
 
    def generateSatallites( self ):
-      for orbit in self.orbits:
+      for orbit in self.primary_star.orbits:
          orbit.numberOfSatallites()
          orbit.generateSatallites()
 
@@ -119,6 +118,11 @@ class SolarSystem():
    def createStars( self ):
       self.primary_star = PrimaryStar( self.system_nature )
 
+   def capturedPlanetsAndEmptyOrbits( self ):
+      self.primary_star.emptyOrbits()
+      self.primary_star.capturedPlanets()
+         
+
 class Orbit(object):
    def __init__( self, star, number ):
       self.star = star
@@ -127,9 +131,9 @@ class Orbit(object):
       self.zone = None
       self.body = None
 
-   def generateWorld( self ):
+   def generateWorld( self, deviation=0 ):
       self.occupied = True
-      self.body = World( self.star, self, self.zone )
+      self.body = World( self.star, self, self.zone, deviation=deviation )
 
    def numberOfSatallites( self ):
       self.body.numberOfSatallites()
@@ -139,6 +143,12 @@ class Orbit(object):
 
    def determineAdditionalCharacteristics( self ):
       self.body.determineAdditionalCharacteristics()
+
+   @property
+   def name( self ):
+      body = self.body.name if self.body else 'None'
+      occupied = 'False' if not self.occupied else ' True'
+      return 'Orbit(%s): occupied(%s) zone(%s)' % ( body, occupied, self.zone )
 
 class SolarObjectBase(object):
    def __init__( self, reqs={} ):
@@ -156,11 +166,20 @@ class Star( SolarObjectBase ):
    _star_types = {
          'O' : 'blue white',
          'B' : 'blue',
-         'A' : 'white dwarf',
-         'M' : 'red giant', 
-         'K' : 'orange dwarf',
-         'G' : 'yellow dwarf',
-         'F' : 'yellow-white dwarf',
+         'A' : 'white',
+         'M' : 'red', 
+         'K' : 'orange',
+         'G' : 'yellow',
+         'F' : 'yellow-white',
+      }
+   _star_sizes = {
+         0   : 'bright supergiant',
+         1   : 'weaker supergiant',
+         2   : 'bright giant',
+         3   : 'giant',
+         4   : 'subgiant',
+         5   : 'main sequence',
+         6   : 'dwarf',
       }
    _zones = [
          { #  SIZE 0 
@@ -354,7 +373,7 @@ class Star( SolarObjectBase ):
                            'I', 'I', 'I', 'I', 'I', 'I', 'I',
                            'H',
                            'O', 'O', 'O', 'O', 'O' ],
-            "M0" : [ '-' , '_'
+            "M0" : [ '-' , '_',
                            'I', 'I', 'I', 'I', 'I', 'I',
                            'H',
                            'O', 'O', 'O', 'O', 'O' ],
@@ -457,6 +476,7 @@ class Star( SolarObjectBase ):
       self.star_type = 'G'
       self.star_decimal = 0
       self.orbits = []
+      self.max_usable_orbits = 0
       self.binary = None
       self.trinary = None
 
@@ -465,6 +485,35 @@ class Star( SolarObjectBase ):
       self._size()
       self.createCompanions()
       self._orbits()
+      self.placeCompanions()
+
+   def _orbits( self ):
+      maxOrbits = 14
+      if self.size < 2: 
+         maxOrbits = 15
+      if isinstance( self, BinaryStar ):
+         maxOrbits = self.orbit / 2
+      self.orbits = [ Orbit( self, x ) for x in range( maxOrbits ) ]
+      for o in self.orbits:
+         o.occupied = True
+      roll = D(2)
+      if self.size == 3:
+         roll = roll + 4
+      elif self.size <= 2:
+         roll = roll + 8
+      if self.star_type == 'M':
+         roll = roll - 4
+      elif self.star_type == 'K':
+         roll = roll - 2
+      if roll < 0:
+         roll = 0
+      if roll > maxOrbits - 1:
+         roll = maxOrbits - 1
+      self.max_usable_orbits = roll
+      for x in range( roll ):
+         self.orbits[ x ] = Orbit( self, x )
+      for orbit in sorted( self.orbits ):
+         orbit.zone = self._zones[min(self.size, 5)][self.star_class][min(orbit.number,maxOrbits - 1)] 
 
    def _decimal( self ):
       roll = D(1)
@@ -472,7 +521,7 @@ class Star( SolarObjectBase ):
          decimal = 0
       else:
          decimal = 5
-      self.star_decimal = 5
+      self.star_decimal = decimal
 
    def createCompanions( self ):
       if self.system_nature == 'solo':
@@ -483,16 +532,56 @@ class Star( SolarObjectBase ):
          self.binary = BinaryStar( self )
          self.trinary = TrinaryStar( self )
 
+   def placeCompanions( self ):
+      for companion in [ self.binary, self.trinary ]:
+         if companion:
+            try:
+               orbit = self.orbits[ companion.orbit ]
+            except IndexError:
+               for x in range( 1 + companion.orbit - len(self.orbits) ):
+                  self.orbits.append( None )
+            orbit = self.orbits[ companion.orbit ] = Orbit( self, companion.orbit )
+            orbit.occupied = True
+            orbit.body = companion
+            deadZone = ( companion.orbit / 2, companion.orbit * 2 )
+            for o in range( deadZone[0], deadZone[1] ):
+               if o >= len(self.orbits):
+                  continue
+               orbit = self.orbits[ o ]
+               if not orbit:
+                  orbit = self.orbits[ o ] = Orbit( self, o )
+               orbit.occupied = True
+               size = self.size
+               if self.size == 6:
+                  size = 5
+               if o >= len( self._zones[ size ][ self.star_class ] ):
+                  orbit.zone = 'O'
+               else:
+                  orbit.zone = self._zones[ size ][ self.star_class ][ o ]
+
+   def printBody( self ):
+      if not self.print_prefix:
+         print self.name
+      for o in self.orbits:
+         if o.body == None and o.occupied:
+            print self.print_prefix + '***'
+         else:
+            print self.print_prefix + '***', o.name
+         if o.body:
+            o.body.printBody()
+
    @property
    def name( self ):
-      return '%s%d %s %s' % ( self.star_type, self.star_decimal,
-                              self._star_types[ self.star_type ], self.body_type )
+      return '%s %s(%s) %s' % ( self._star_sizes[ self.size ],
+                               self._star_types[ self.star_type ], 
+                               self.star_class, self.body_type )
    @property
    def star_class( self ):
       return '%s%d' % ( self.star_type, self.star_decimal )
 
 class PrimaryStar( Star ):
    def __init__( self, system_nature=None ):
+      self.print_prefix = ''
       self.system_nature = system_nature
       super( PrimaryStar, self ).__init__()
 
@@ -531,35 +620,52 @@ class PrimaryStar( Star ):
          size = 5
       self.size = size
 
-   def _orbits( self ):
-      roll = D(2)
-      if self.size == 3:
-         roll = roll + 4
-      elif self.size <= 2:
-         roll = roll + 8
-      if self.star_type == 'M':
-         roll = roll - 4
-      elif self.star_type == 'K':
-         roll = roll - 2
-      if roll < 0:
-         roll = 0
-      if self.size <= 2:
-         if roll > 14:
-            roll = 14
-      elif roll > 13:
-         roll = 13
-      for x in range( roll ):
-         self.orbits.append( Orbit( self, x ) )
-      for orbit in sorted( self.orbits ):
-         size = self.size
-         if self.size == 6:
-            size = 5
-         orbit.zone = self._zones[ size ][ self.star_class ][ orbit.number ] 
+   def emptyOrbits( self ):
+      if len(self.orbits) < 2:
+         return
+      roll = D(1)
+      if roll > 4:
+         num_empty = D(1)
+         if num_empty < 3:
+            num_empty = 1
+         elif num_empty == 3:
+            num_empty = 2
+         else:
+            num_empty = 3
+         for x in range( num_empty ):
+            roll = self.getValidRoll( 2 )
+            self.orbits[ roll ].occupied = True 
 
+   def capturedPlanets( self ):
+      if len(self.orbits) < 2:
+         return
+      roll = D(1)
+      if roll > 4:
+         num_of_caps = D(1)
+         if num_of_caps < 3:
+            num_of_caps = 1
+         elif num_of_caps < 5:
+            num_of_caps = 2
+         else:
+            num_of_caps = 3
+         for x in range( num_of_caps ):
+            roll = self.getValidRoll( 2 )
+            deviation = 0.1 * ( D(2) - 7.0 )
+            self.orbits[roll].generateWorld( deviation=deviation )
+         
+   def getValidRoll( self, num ):
+      roll = D(num)
+      if roll > len(self.orbits):
+         roll = self.getValidRoll(num)
+      if self.orbits[roll].occupied:
+         roll = self.getValidRoll(num)
+      return roll
+         
 class BinaryStar( Star ):
    orbit_roll_modifier = 0
 
    def __init__( self, primary_star=None ):
+      self.print_prefix = '***'
       self.primary_star = primary_star
       self.system_nature = 'solo'
       self.orbit = None
@@ -569,6 +675,9 @@ class BinaryStar( Star ):
       if self.orbit >= 12:
          self._system_nature()
          self.createCompanions()
+         self.placeCompanions()
+      if self.binary:
+         self.binary.print_prefix = '******'
 
    def _type( self ):
       roll = D(2) + self.primary_star.star_type_roll
@@ -604,33 +713,6 @@ class BinaryStar( Star ):
                                             'K0', 'K5', 'G0', 'G5', 'F0' ]:
          size = 5
       self.size = size
-
-   def _orbits( self ):
-      roll = D(2)
-      if self.size == 3:
-         roll = roll + 4
-      elif self.size in [ '1a', '1b', 2 ]:
-         roll = roll + 8
-      if self.star_type == 'M':
-         roll = roll - 4
-      elif self.star_type == 'K':
-         roll = roll - 2
-      if roll > ( self.orbit / 2 ):
-         roll = self.orbit
-      if roll < 0:
-         roll = 0
-      if self.size <= 2:
-         if roll > 14:
-            roll = 14
-      elif roll > 13:
-         roll = 13
-      for x in range( roll ):
-         self.orbits.append( Orbit( self, x ) )
-      for orbit in sorted( self.orbits ):
-         size = self.size
-         if self.size == 6:
-            size = 5
-         orbit.zone = self._zones[ size ][ self.star_class ][ orbit.number ] 
 
    def _orbit( self ):
       roll = D(2) + self.orbit_roll_modifier
@@ -674,7 +756,7 @@ class PlanetoidBase( SolarObjectBase ):
       pass
       
 class World( PlanetoidBase ):
-   def __init__( self, star, orbit, zone ):
+   def __init__( self, star, orbit, zone, deviation=0 ):
       """ Generate A Random World inside 'zone' """
       super( World, self ).__init__()
       self.body_type = 'world'
@@ -682,6 +764,8 @@ class World( PlanetoidBase ):
       self.satallites = []
       self.star = star
       self.orbit = orbit
+      self.zone = zone
+      self.deviation = deviation
        
       self._size()
       self._atmosphere()
@@ -761,11 +845,19 @@ if __name__ == '__main__':
       system = SolarSystem()
       lastVar = var
 
-
-def TestStars():
+def TestOrbits( star_type='solo' ):
    for x in range( 100 ):
-      s = PrimaryStar('binary')
-      print s.name
-      print 'binary', s.binary.name
-      if s.binary.system_nature == 'binary':
-         print 'binary,binary', s.binary.binary.name
+      s = createStars( systemNature() )
+      s.printBody()
+
+def systemNature():
+   roll = D(2)
+   if roll < 8:
+      roll = 'solo'
+   elif roll < 12:
+      roll = 'binary'
+   elif roll == 12:
+      roll = 'trinary'
+   return roll
+def createStars( system_nature ):
+   return PrimaryStar( system_nature )
