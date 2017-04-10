@@ -58,6 +58,16 @@ class SolarSystem():
       for orbit in self.primary_star.orbits:
          if not orbit.occupied:
             orbit.generateWorld()
+      binary = self.primary_star.binary
+      if binary:
+         for orbit in binary.orbits:
+            if not orbit.occupied:
+               orbit.generateWorld()
+      trinary = self.primary_star.trinary
+      if trinary:
+         for orbit in trinary.orbits:
+            if not orbit.occupied:
+               orbit.generateWorld()
 
    def generateSatallites( self ):
       for orbit in self.primary_star.orbits:
@@ -89,10 +99,29 @@ class SolarSystem():
       self.primary_star.createEmptyOrbits()
       self.primary_star.capturedPlanets()
 
+      binary = self.primary_star.binary
+      if binary:
+         binary.createEmptyOrbits()
+         binary.capturedPlanets()
+      
+      trinary = self.primary_star.trinary
+      if trinary:
+         trinary.createEmptyOrbits()
+         trinary.capturedPlanets()
+
    def gasGiantsAndPlanetoids( self ):
       self.primary_star.createGasGiants()
       self.primary_star.createPlanetoids()
-         
+
+      binary = self.primary_star.binary
+      if binary:
+         binary.createGasGiants()
+         binary.createPlanetoids()
+
+      trinary = self.primary_star.trinary
+      if trinary:
+         trinary.createGasGiants()
+         trinary.createPlanetoids()
 
 class Orbit(object):
    def __init__( self,  star, number ):
@@ -123,7 +152,7 @@ class Orbit(object):
 
    @property
    def name( self ):
-      body = self.body.name if self.body else 'None'
+      body = self.body.body_type if self.body else 'None'
       occupied = 'False' if not self.occupied else ' True'
       return 'Orbit(%s): occupied(%s) zone(%s)' % ( body, occupied, self.zone )
    @property
@@ -613,6 +642,58 @@ class Star( SolarObjectBase ):
             roll = emptyOrbitNums[ roll ]
             self.orbits[ roll ] = PlanetoidBelt( self, roll )
 
+   def createEmptyOrbits( self ):
+      roll = D(1)
+      if roll > 4:
+         num_empty = D(1)
+         if num_empty < 3:
+            num_empty = 1
+         elif num_empty == 3:
+            num_empty = 2
+         else:
+            num_empty = 3
+         for x in range( num_empty ):
+            if self.emptyOrbits():
+               roll = self.getValidRoll( 2 )
+               if roll == 0:
+                  continue
+               self.orbits[ roll ].occupied = True 
+
+   def capturedPlanets( self ):
+      if len(self.orbits) < 2:
+         return
+      roll = D(1)
+      if roll > 4:
+         num_of_caps = D(1)
+         if num_of_caps < 3:
+            num_of_caps = 1
+         elif num_of_caps < 5:
+            num_of_caps = 2
+         else:
+            num_of_caps = 3
+         for x in range( num_of_caps ):
+            if self.emptyOrbits():
+               roll = self.getValidRoll( 2 )
+               if roll == 0:
+                  continue
+               deviation = 0.1 * ( D(2) - 7.0 )
+               self.orbits[roll].generateWorld( deviation=deviation )
+
+   def getValidRoll( self, num ):
+      roll = D(num)
+      emptyOs = self.emptyOrbits()
+      _emptyOs = copy.copy( emptyOs )
+      for emptyO in _emptyOs:
+         if emptyO.number == 0:
+            emptyOs.remove( emptyO )
+         if emptyO.number == 1:
+            emptyOs.remove( emptyO )
+      if len( emptyOs ) == 0:
+         return 0
+      if not roll in [ emptyO.number for emptyO in emptyOs ]:
+         roll = self.getValidRoll( num )
+      return roll
+
    def emptyOrbits( self ):
       orbits = [ orbit for orbit in self.orbits if not orbit.occupied ]
       return orbits
@@ -620,11 +701,13 @@ class Star( SolarObjectBase ):
    def printBody( self ):
       if not self.print_prefix:
          print self.name
+      else:
+         print self.print_prefix + '----', self.name
       for o in self.orbits:
          if o.body == None and o.occupied:
-            print self.print_prefix + '***'
+            print self.print_prefix + '{:-<4}'.format( o.number )
          else:
-            print self.print_prefix + '***', o.name
+            print self.print_prefix + '{:-<4}'.format( o.number ), o.name
          if o.body:
             o.body.printBody()
 
@@ -681,65 +764,13 @@ class PrimaryStar( Star ):
          size = 5
       self.size = size
 
-   def createEmptyOrbits( self ):
-      roll = D(1)
-      if roll > 4:
-         num_empty = D(1)
-         if num_empty < 3:
-            num_empty = 1
-         elif num_empty == 3:
-            num_empty = 2
-         else:
-            num_empty = 3
-         for x in range( num_empty ):
-            if self.emptyOrbits():
-               roll = self.getValidRoll( 2 )
-               if roll == 0:
-                  continue
-               self.orbits[ roll ].occupied = True 
-
-   def capturedPlanets( self ):
-      if len(self.orbits) < 2:
-         return
-      roll = D(1)
-      if roll > 4:
-         num_of_caps = D(1)
-         if num_of_caps < 3:
-            num_of_caps = 1
-         elif num_of_caps < 5:
-            num_of_caps = 2
-         else:
-            num_of_caps = 3
-         for x in range( num_of_caps ):
-            if self.emptyOrbits():
-               roll = self.getValidRoll( 2 )
-               if roll == 0:
-                  continue
-               deviation = 0.1 * ( D(2) - 7.0 )
-               self.orbits[roll].generateWorld( deviation=deviation )
-
-         
-   def getValidRoll( self, num ):
-      roll = D(num)
-      emptyOs = self.emptyOrbits()
-      _emptyOs = copy.copy( emptyOs )
-      for emptyO in _emptyOs:
-         if emptyO.number == 0:
-            emptyOs.remove( emptyO )
-         if emptyO.number == 1:
-            emptyOs.remove( emptyO )
-      if len( emptyOs ) == 0:
-         return 0
-      if not roll in [ emptyO.number for emptyO in emptyOs ]:
-         roll = self.getValidRoll( num )
-      return roll
          
 class BinaryStar( Star ):
    orbit_roll_modifier = 0
 
    def __init__( self, primary_star=None ):
-      self.print_prefix = '***'
       self.primary_star = primary_star
+      self.print_prefix2 = ''
       self.system_nature = 'solo'
       self.orbit = None
 
@@ -750,7 +781,7 @@ class BinaryStar( Star ):
          self.createCompanions()
          self.placeCompanions()
       if self.binary:
-         self.binary.print_prefix = '******'
+         self.binary.print_prefix2 = '----'
 
    def _type( self ):
       roll = D(2) + self.primary_star.star_type_roll
@@ -806,6 +837,10 @@ class BinaryStar( Star ):
          roll = 'binary'
       self.system_nature = roll
 
+   @property
+   def print_prefix( self ):
+      return '{:-<4}'.format(self.orbit) + self.print_prefix2
+
 class TrinaryStar( BinaryStar ):
    orbit_roll_modifier = 4
 
@@ -822,11 +857,11 @@ class PlanetoidBelt( Orbit ):
 class PlanetoidBase( SolarObjectBase ):
    def __init__( self ):
       super( PlanetoidBase, self ).__init__()
-      self.print_prefix = ''
       self.atmosphere = None
       self.hydrography = None
       self.population = None
       self.orbit = None
+      self.deviation = 0
 
       self.satallites = []
 
@@ -842,8 +877,14 @@ class PlanetoidBase( SolarObjectBase ):
 
    def printBody( self ):
       for satallite in self.satallites:
-         print self.print_prefix + '***', satallite.name
+         print self.print_prefix + '----', satallite.name
 
+   @property
+   def print_prefix( self ):
+      orbit = self.orbit.number + self.deviation
+      if isinstance( self.orbit.star, BinaryStar ) or isinstance( self.orbit.star, TrinaryStar ):
+         orbit = self.orbit.star.orbit
+      return '{:-<4}'.format( orbit )
    @property
    def name( self ):
       return '%s %s %s %s %s(%s)' % ( self.size, self.hydrography, self.atmosphere, 
@@ -853,10 +894,71 @@ class PlanetoidBase( SolarObjectBase ):
       return 'planetoid'
       
 class World( PlanetoidBase ):
+   _sizes = {
+         0   : 'planetiod belt',
+         'R' : 'ring',
+         'S' : 'small',
+         1   : '1000mi radius',
+         2   : '2000mi radius',
+         3   : '3000mi radius',
+         4   : '4000mi radius',
+         5   : '5000mi radius',
+         6   : '6000mi radius',
+         7   : '7000mi radius',
+         8   : '8000mi radius',
+         9   : '9000mi radius',
+         10  : '10000mi radius',
+         'SGG': 'small',
+         'LGG': 'large',
+      }
+   _atmospheres = [
+         'no',
+         'a trace',
+         'a very thin, tainted',
+         'a very thin',
+         'a thin, tainted',
+         'a thin',
+         'a standard',
+         'a standard, tainted',
+         'a dense',
+         'a dense, tainted',
+         'a exotic',
+         'a corrosive',
+         'a insidious',
+         'a dense, high',
+         'a ellipsoid',
+         'a thin, low',
+         ]
+   _hydrographies = [
+         '0%',
+         '10%',
+         '20%',
+         '30%',
+         '40%',
+         '50%',
+         '60%',
+         '70%',
+         '80%',
+         '90%',
+         '100%',
+         ]
+   _populations = [
+         'zero',
+         'tens of',
+         'hundreds of',
+         'thousands of',
+         'tens of thousands of',
+         'hundreds of thousands of',
+         'millions of',
+         'tens of millions of',
+         'hundreds of millions of',
+         'billions of',
+         'tens of billions of',
+         ]
+
    def __init__( self, star, orbit, zone, deviation=0 ):
       """ Generate A Random World inside 'zone' """
       super( World, self ).__init__()
-      self.print_prefix = '***'
       self.num_of_satallites = None
       self.satallites = []
       self.star = star
@@ -886,6 +988,63 @@ class World( PlanetoidBase ):
          size = roll
       self.size = size
 
+   def _atmosphere( self ):
+      size = self.size
+      if size == 'S':
+         size = 0
+      roll = D(2) - 7 + size
+      if self.orbit.zone == 'I':
+         roll = roll - 2
+      if self.orbit.zone == 'O':
+         roll = roll - 4
+      if size == 0:
+         roll = 0
+
+      if roll < 0:
+         roll = 0
+      if roll > 15:
+         roll = 15
+
+      if self.orbit.zone == 'O':
+         z = self.star.orbits[ max(self.orbit.number - 2, 0) ]
+         if z == 'O' or z == 'H':
+            self.atmosphere = 10
+            return
+      self.atmosphere = roll
+   
+   def _hydrography( self ):
+      size = self.size
+      if size == 'S':
+         size = 0
+      roll = D(2) - 7 + size
+      if self.orbit.zone == 'O':
+         roll = roll - 2
+      if self.atmosphere <= 1 or self.atmosphere >= 10:
+         roll = roll - 4
+      if self.orbit.zone == 'I':
+         roll = 0
+      if size <= 1:
+         roll = 0
+      if roll < 0:
+         roll = 0
+      if roll > 10:
+         roll = 10
+      self.hydrography = roll
+
+   def _population( self ):
+      roll = D(2) - 2
+      if self.orbit.zone == 'I':
+         roll = roll - 5
+      if self.orbit.zone == 'O':
+         roll = roll - 3
+      if not self.atmosphere in [ 0, 5, 6, 8 ]:
+         roll = roll - 2
+      if roll < 0:
+         roll = 0
+      if roll > 10:
+         roll = 10
+      self.population = roll
+
    def numberOfSatallites( self ):
       if not self.size == 'S':
          self.num_of_satallites = D(1) - 3
@@ -912,25 +1071,59 @@ class World( PlanetoidBase ):
          self._subordinateTechLevel()
          self._spacePortType()
 
+   def printBody( self ):
+      print self.print_prefix + self.print_prefix2, self.name
+      super( World, self ).printBody()
+
    @property
    def name( self ):
-      return '%s %s %s %s %s(%s.%s)' % ( self.size, self.hydrography, self.atmosphere, 
-                                         self.population, self.body_type, self.orbit.number, 
-                                         self.deviation )
+      firstLine =  '%s %s covered in %s water\n' % (
+            self._sizes[ self.size ], self.body_type,
+            self._hydrographies[ self.hydrography ] )
+      secondLine = 'with %s atmosphere and %s intelligent beings' % (
+             self._atmospheres[ self.atmosphere ], self._populations[ self.population ] )
+      return firstLine + self.print_prefix + self.print_prefix2 + ' ' + secondLine
    @property
    def body_type( self ):
       return 'world'
-
+   @property
+   def print_prefix2( self ):
+      if isinstance( self.star, BinaryStar ) or isinstance( self.star, TrinaryStar ):
+         return '{:-<8}'.format( self.orbit.number + self.deviation )
+      else:
+         return '----'
 class GasGiant( World ):
+   def _size( self ):
+      roll = D(1)
+      size = 'small'
+      if roll > 3:
+         size = 'large'
+      self.size = size
+   def _atmosphere( self ):
+      return
+   def _hydrography( self ):
+      return
+
+   @property
+   def print_prefix2( self ):
+      if isinstance( self.star, BinaryStar ) or isinstance( self.star, TrinaryStar ):
+         return '--------'
+      else:
+         return '----'
+
+   @property
+   def name( self ):
+      return '%s %s' % ( self.size, self.body_type )
    @property
    def body_type( self ):
       return 'gas giant'
+   
 
 class Satallite( PlanetoidBase ):
    def __init__( self, world, orbit, size ):
       """ Generate A Random Satallite of 'size' """
       super( Satallite, self ).__init__()
-      self.print_prefix = '******'
+      self.print_prefix = '------'
       self.world = world
       self.orbit = orbit
       self.size = size
