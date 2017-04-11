@@ -136,7 +136,7 @@ class Orbit(object):
 
    def generateWorld( self, deviation=0 ):
       self.occupied = True
-      self.body = World( self.star, self, self.zone, deviation=deviation )
+      self.body = World( self.star, self, deviation=deviation )
 
    def generateGasGiant( self ):
       self.occupied = True
@@ -796,6 +796,11 @@ class PrimaryStar( Star ):
          size = 5
       self.size = size
 
+   def printBody( self ):
+      print self.name
+      for o in self.orbits:
+         o.printBody()
+
    @property
    def prefix( self ):
       return ''
@@ -943,7 +948,7 @@ class World( PlanetoidBase ):
          'LGG': 'large',
       }
    _atmospheres = [
-         'no',
+         'no', 
          'a trace',
          'a very thin, tainted',
          'a very thin',
@@ -987,13 +992,12 @@ class World( PlanetoidBase ):
          'tens of billions of',
          ]
 
-   def __init__( self, star, orbit, zone, deviation=0 ):
-      """ Generate A Random World inside 'zone' """
+   def __init__( self, star, orbit, deviation=0 ):
+      """ Generate A Random World inside  'zone' """
       super( World, self ).__init__()
       self.num_of_satallites = None
       self.star = star
       self.orbit = orbit
-      self.zone = zone
       self.deviation = deviation
        
       self._size()
@@ -1035,12 +1039,13 @@ class World( PlanetoidBase ):
       if roll > 15:
          roll = 15
 
-      if self.orbit.zone == 'O':
-         z = self.star.orbits[ max(self.orbit.number - 2, 0) ]
-         if z == 'O' or z == 'H':
-            self.atmosphere = 10
-            return
       self.atmosphere = roll
+      if self.orbit.zone == 'O':
+         z = self.star.orbits[ max(self.orbit.number - 2, 0) ].zone
+         if z == 'O' or z == 'H':
+            exotic = D(2)
+            if exotic == 12:
+               self.atmosphere = 10
    
    def _hydrography( self ):
       size = self.size
@@ -1188,10 +1193,16 @@ class GasGiant( World ):
    def body_type( self ):
       return 'Gas Giant'
    
-class Satallite( PlanetoidBase ):
+class Satallite( World ):
    def __init__( self, world, orbit, size ):
       """ Generate A Random Satallite of 'size' """
-      super( Satallite, self ).__init__()
+      self.orbits = []
+      self.deviation = 0
+
+      self.atmosphere = None
+      self.hydrography = None
+      self.population = None
+
       self.world = world
       self.star = world.star
       self.orbit = orbit
@@ -1201,6 +1212,71 @@ class Satallite( PlanetoidBase ):
       self._hydrography()
       self._population()
 
+   def _atmosphere( self ):
+      size = self.size
+      if size == 'R' or size == 'S':
+         size = 0
+      roll = D(2) - 7 + size
+      if self.world.orbit.zone == 'I':
+         roll = roll - 4
+      if self.world.orbit.zone == 'O':
+         roll = roll - 4
+      if size <= 1:
+         roll = 0
+
+      if roll < 0:
+         roll = 0
+      if roll > 15:
+         roll = 15
+
+      self.atmosphere = roll
+      if self.world.orbit.zone == 'O':
+         z = self.star.orbits[ max(self.world.orbit.number - 2, 0) ].zone
+         if z == 'O' or z == 'H':
+            exotic = D(2)
+            if exotic == 12:
+               self.atmosphere = 10
+
+   def _hydrography( self ):
+      size = self.size 
+      if size == 'S' or size == 'R':
+         size = 0
+      roll = D(2) - 7 + size
+      if self.world.orbit.zone == 'O':
+         roll = roll - 2
+      if self.atmosphere <= 1 or self.atmosphere >= 10:
+         roll = roll - 4
+      if self.world.orbit.zone == 'I':
+         roll = 0
+      if size == 0:
+         roll = 0
+      if roll < 0:
+         roll = 0
+      if roll > 10:
+         roll = 10
+      self.hydrography = roll
+
+   def _population( self ):
+      size = self.size 
+      if size == 'S' or size == 'R':
+         size = 0
+      roll = D(2) - 2
+      if self.world.orbit.zone == 'I':
+         roll = roll - 5
+      if self.world.orbit.zone == 'O':
+         roll = roll - 4
+      if size <= 4:
+         roll = roll - 2
+      if not self.atmosphere in [ 5, 6, 8 ]:
+         roll = roll - 2
+      if self.size == 'R':
+         roll = 0
+      if roll < 0:
+         roll = 0
+      if roll > 10:
+         roll = 10
+      self.population = roll
+
    @property
    def prefix( self ):
       return self.world.prefix + '{:-<4}'.format( str(self.orbit.number) )
@@ -1208,9 +1284,6 @@ class Satallite( PlanetoidBase ):
    @property
    def body_type( self ):
       return 'Satallite'
-   @property
-   def name( self ):
-      return 'size %s %s' % ( self.size, self.body_type )
 
 def test():
    for x in range( 100 ):
