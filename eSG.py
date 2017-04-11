@@ -958,11 +958,11 @@ class World( PlanetoidBase ):
          'a standard, tainted',
          'a dense',
          'a dense, tainted',
-         'a exotic',
+         'an exotic',
          'a corrosive',
          'a insidious',
          'a dense, high',
-         'a ellipsoid',
+         'an ellipsoid',
          'a thin, low',
          ]
    _hydrographies = [
@@ -1100,16 +1100,33 @@ class World( PlanetoidBase ):
          roll = D(2)
          if roll > 7:
             multiple = 5
-         orbitNum = self.getValidSatalliteRoll( multiple )
+         orbitNum = self.getValidSatalliteRoll( multiple, size )
 
          self.orbits.append( Orbit( self, orbitNum ) )
          self.orbits[-1].occupied = True
          self.orbits[-1].body = Satallite( self, self.orbits[-1], size )
 
-   def getValidSatalliteRoll( self, multiple ):
+   def getValidSatalliteRoll( self, multiple, size ):
+      if size == 'R':
+         roll = D(1)
+         if roll < 4:
+            roll = 1
+         elif roll < 6:
+            roll = 2
+         else:
+            roll = 3
+         orbitNums =  [ o.number for o in self.orbits ]
+         if not (1 in orbitNums and 2 in orbitNums and 3 in orbitNums ):
+            if roll in orbitNums:
+               roll = self.getValidSatalliteRoll( multiple, size )
+         else:
+            for x in range( 100 ):
+               if x not in orbitNums:
+                  return x
+         return roll
       roll = ( D(2) + 1 ) * multiple
       if roll in [ o.number for o in self.orbits ]:
-         roll = self.getValidSatalliteRoll( multiple )
+         roll = self.getValidSatalliteRoll( multiple, size )
       return roll
 
    def determineAdditionalCharacteristics( self ):
@@ -1180,7 +1197,7 @@ class GasGiant( World ):
             multiple = 5
          if roll == 12:
             multiple = 25
-         orbitNum = self.getValidSatalliteRoll( multiple )
+         orbitNum = self.getValidSatalliteRoll( multiple, size )
 
          self.orbits.append( Orbit( self, orbitNum ) )
          self.orbits[-1].occupied = True
