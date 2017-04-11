@@ -156,33 +156,51 @@ class Orbit(object):
          self.body.determineAdditionalCharacteristics()
 
    def printBody( self ):
-      print self.prefix, self.name
+      if self.name:
+         print self.name
       if self.body:
          self.body.printBody()
    @property
    def prefix( self ):
       if self.body:
          return self.body.prefix
-      return '{:-<4}'.format( self.number )
+      return '{:-<4}'.format( str( self.number ) )
    @property
    def name( self ):
       if self.body == None and self.occupied:
-         return ''
-      body = self.body.body_type if self.body else 'None'
-      occupied = 'False' if not self.occupied else ' True'
-      return 'Orbit(%s): zone(%s)' % ( body, self.zone )
+         return self.prefix
+      return ''
    @property
    def zone( self ):
       star = self.star
-      if not ( isinstance( star, PrimaryStar ) or 
-               isinstance( star, BinaryStar ) or 
-               isinstance( star, TrinaryStar ) ):
+      if not isinstance( star, Star ):
          return '_'
       zones = star._zones[min(star.size, 5)][star.star_class]
       if self.number >= len( zones ):
          return 'O'
       else:
          return zones[ self.number ]
+
+class PlanetoidBelt( Orbit ):
+   def __init__( self, star, number ):
+      super( PlanetoidBelt, self ).__init__( star, number )
+      self.occupied = True
+      self.body = PlanetoidBase()
+      self.body.orbit = self
+   
+   @property
+   def prefix( self ):
+      return self.star.prefix + '{:-<4}'.format( str( self.number ) )
+   @property
+   def name( self ):
+      zone = ''
+      if self.zone == 'O':
+         zone = 'outter '
+      if self.zone == 'I':
+         zone = 'inner '
+      return '%splanetoid belt' % zone
+   def printBody( self ):
+      print self.prefix, self.name
 
 class SolarObjectBase(object):
    def __init__( self, reqs={} ):
@@ -663,6 +681,9 @@ class Star( SolarObjectBase ):
             self.orbits[ roll ] = PlanetoidBelt( self, roll )
 
    def createEmptyOrbits( self ):
+      for o in self.orbits:
+         if o.zone == '-':
+            o.occupied = True
       roll = D(1)
       if roll > 4:
          num_empty = D(1)
@@ -730,7 +751,7 @@ class Star( SolarObjectBase ):
                                self.star_class, self.body_type )
    @property
    def body_type( self ):
-      return 'star'
+      return 'Star'
    @property
    def star_class( self ):
       return '%s%d' % ( self.star_type, self.star_decimal )
@@ -861,23 +882,7 @@ class BinaryStar( Star ):
 
 class TrinaryStar( BinaryStar ):
    orbit_roll_modifier = 4
-
-class PlanetoidBelt( Orbit ):
-   def __init__( self, star, number ):
-      super( PlanetoidBelt, self ).__init__( star, number )
-      self.occupied = True
-      self.body = PlanetoidBase()
-      self.body.orbit = self
-   
-   @property
-   def prefix( self ):
-      return self.star.prefix + '{:-<4}'.format( self.number )
-   @property
-   def name( self ):
-      return 'Planetoid Belt zone(%s)' % self.zone
-   def printBody( self ):
-      print self.prefix, self.name
-      
+ 
 class PlanetoidBase( SolarObjectBase ):
    def __init__( self ):
       super( PlanetoidBase, self ).__init__()
@@ -917,7 +922,7 @@ class PlanetoidBase( SolarObjectBase ):
       return self.body_type
    @property
    def body_type( self ):
-      return 'planetoid'
+      return 'Planetoid'
       
 class World( PlanetoidBase ):
    _sizes = {
@@ -1120,7 +1125,7 @@ class World( PlanetoidBase ):
 
    @property
    def prefix( self ):
-      return self.star.prefix + '{:-<4}'.format( self.orbit.number )
+      return self.star.prefix + '{:-<4}'.format( str(self.orbit.number) )
    @property
    def name( self ):
       firstLine =  '%s %s covered in %s water\n' % (
@@ -1128,10 +1133,10 @@ class World( PlanetoidBase ):
             self._hydrographies[ self.hydrography ] )
       secondLine = 'with %s atmosphere and %s intelligent beings' % (
              self._atmospheres[ self.atmosphere ], self._populations[ self.population ] )
-      return '--- ' + firstLine + self.prefix + '---- ' + secondLine
+      return firstLine + self.prefix + '---- ' + secondLine
    @property
    def body_type( self ):
-      return 'world'
+      return 'World'
 
 class GasGiant( World ):
    def _size( self ):
@@ -1178,10 +1183,10 @@ class GasGiant( World ):
 
    @property
    def name( self ):
-      return '--- %s %s' % ( self.size, self.body_type )
+      return '%s %s' % ( self.size, self.body_type )
    @property
    def body_type( self ):
-      return 'gas giant'
+      return 'Gas Giant'
    
 class Satallite( PlanetoidBase ):
    def __init__( self, world, orbit, size ):
@@ -1198,17 +1203,14 @@ class Satallite( PlanetoidBase ):
 
    @property
    def prefix( self ):
-      return self.world.prefix + '{:-<4}'.format( self.orbit.number )
+      return self.world.prefix + '{:-<4}'.format( str(self.orbit.number) )
 
    @property
    def body_type( self ):
-      return 'satallite'
+      return 'Satallite'
    @property
    def name( self ):
-      return '--- size %s %s' % ( self.size, self.body_type )
-
-if __name__ == '__main__':
-   test()
+      return 'size %s %s' % ( self.size, self.body_type )
 
 def test():
    for x in range( 100 ):
@@ -1225,3 +1227,6 @@ def systemNature():
    return roll
 def createStars( system_nature ):
    return PrimaryStar( system_nature )
+
+if __name__ == '__main__':
+   test()
