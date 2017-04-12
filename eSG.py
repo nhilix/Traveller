@@ -24,9 +24,9 @@ class SolarSystem():
       self.planet_reqs = {}
       self.feature_reqs = {}
 
-      self.orbits = []
       self.system_nature = None
       self.primary_star = None
+      self.primary_world = None
 
       self.generateSystemRequirements( self.Stars, self.Planets,
                                        self.NaturalFeatures, 
@@ -37,8 +37,7 @@ class SolarSystem():
       self.generateStarSystemFeatures()
       self.generateWorlds()
       self.generateSatallites()
-      #self.designateMainWorld()
-
+      self.designateMainWorld()
 
       self.primary_star.printBody()
 
@@ -78,11 +77,28 @@ class SolarSystem():
 
    def designateMainWorld( self ):
       """ Choose the most appropriate world to be the 'main_world' """
-      #TODO: Add Logic for 'most appropriate'
-      self.orbits[0].body.is_main_world = True
+      # Get any body that is not a ring satallite, a star or gas giant
+      possibleWorlds = self.primary_star.getPossibleMainWorlds()
 
-      for orbit in self.orbits:
-         orbit.determineAdditionalCharacteristics()
+      if len( possibleWorlds ) > 0:
+         # Sort by population, largest first, then pick only worlds with the largest population
+         possibleWorlds = sorted( possibleWorlds, key=lambda world: world.population, reverse=True )
+         possibleWorlds = [ world for world in possibleWorlds 
+                                   if world.population == possibleWorlds[0].population ] 
+         # If there is more than one with the largest population then pick the one in the habitable zone
+         # failing that, pick the clostest to the primary star.
+         if len( possibleWorlds ) > 1:
+            habitableWorlds = [ world for world in possibleWorlds
+                                       if world.orbit.zone == 'H' ]
+            if len( habitableWorlds ) == 1:
+               mainWorld = habitableWorlds[0]
+            else:
+               mainWorld = sorted( possibleWorlds, key=lambda world: world.primaryOrbit )[0]
+         else:
+            mainWorld = possibleWorlds[0]
+         mainWorld.is_main_world = True
+         self.primary_world = mainWorld
+         print mainWorld.fullName
 
    def systemNature( self ):
       roll = D(2)
@@ -164,7 +180,7 @@ class Orbit(object):
    def prefix( self ):
       if self.body:
          return self.body.prefix
-      return '{:-<4}'.format( str( self.number ) )
+      return '{:-<4}'.format( str( self.number ) + 's' )
    @property
    def name( self ):
       if self.body == None and self.occupied:
@@ -209,6 +225,22 @@ class SolarObjectBase(object):
       for key,value in reqs.items():
          setattr( self, key, value )
 
+   def getPossibleMainWorlds( self ):
+      possibleWorlds = []
+      for o in self.orbits:
+         if o.body:
+            for world in o.body.getPossibleMainWorlds():
+               possibleWorlds.append( world )
+      return possibleWorlds
+
+   def printBody( self ):
+      print self.prefix, self.name
+      for o in self.orbits:
+         o.printBody()
+
+   @property
+   def fullName( self ):
+      return self.prefix + ' ' + self.name
    @property
    def name( self ):
       return "%s" % self.body_type
@@ -739,10 +771,6 @@ class Star( SolarObjectBase ):
       orbits = [ orbit for orbit in self.orbits if not orbit.occupied ]
       return orbits
 
-   def printBody( self ):
-      print self.prefix, self.name
-      for o in self.orbits:
-         o.printBody()
 
    @property
    def name( self ):
@@ -883,7 +911,7 @@ class BinaryStar( Star ):
 
    @property
    def prefix( self ):
-      return self.star.prefix + '{:-<4}'.format( self.orbit )
+      return self.star.prefix + '{:-<4}'.format( str( self.orbit ) + 's' )
 
 class TrinaryStar( BinaryStar ):
    orbit_roll_modifier = 4
@@ -891,11 +919,13 @@ class TrinaryStar( BinaryStar ):
 class PlanetoidBase( SolarObjectBase ):
    def __init__( self ):
       super( PlanetoidBase, self ).__init__()
+      self.star = None
       self.atmosphere = None
       self.hydrography = None
       self.population = None
       self.orbit = None
       self.deviation = 0
+      self.is_main_world = False
 
       self.orbits = []
 
@@ -913,12 +943,27 @@ class PlanetoidBase( SolarObjectBase ):
       pass
    def generateSatallites( self ):
       pass
+   def getPossibleMainWorlds( self ):
+      pass
+
+   def getPossibleMainWorlds( self ):
+      possibleWorlds = []
+      for o in self.orbits:
+         if o.body:
+            for world in o.body.getPossibleMainWorlds():
+               possibleWorlds.append( world )
+      return possibleWorlds
 
    def printBody( self ):
       print self.prefix, self.name
       for orbit in sorted( self.orbits, key=lambda orbit: orbit.number ):
          orbit.printBody()
 
+   @property
+   def primaryOrbit( self ):
+      if hasattr( self.star, 'orbit' ):
+         return self.star.orbit
+      return self.orbit.number
    @property
    def prefix( self ):
       return ''
@@ -1107,6 +1152,7 @@ class World( PlanetoidBase ):
          self.orbits[-1].body = Satallite( self, self.orbits[-1], size )
 
    def getValidSatalliteRoll( self, multiple, size ):
+      # If ring, go in first 3 orbitals
       if size == 'R':
          roll = D(1)
          if roll < 4:
@@ -1116,6 +1162,7 @@ class World( PlanetoidBase ):
          else:
             roll = 3
          orbitNums =  [ o.number for o in self.orbits ]
+         # if all 3 are taken, find first available orbit to put ring in
          if not (1 in orbitNums and 2 in orbitNums and 3 in orbitNums ):
             if roll in orbitNums:
                roll = self.getValidSatalliteRoll( multiple, size )
@@ -1124,13 +1171,15 @@ class World( PlanetoidBase ):
                if x not in orbitNums:
                   return x
          return roll
+      # Table from Scouts (Book 6) Pg. 28
       roll = ( D(2) + 1 ) * multiple
       if roll in [ o.number for o in self.orbits ]:
          roll = self.getValidSatalliteRoll( multiple, size )
       return roll
 
+
    def determineAdditionalCharacteristics( self ):
-      if is_main_world:
+      if self.is_main_world:
          self._government()
          self._lawLevel()
          self._starPortType()
@@ -1145,17 +1194,25 @@ class World( PlanetoidBase ):
          self._subordinateTechLevel()
          self._spacePortType()
 
+   def getPossibleMainWorlds( self ):
+      possibleWorlds = super( World, self ).getPossibleMainWorlds()
+      if not self.size == 'R':
+         possibleWorlds.append( self )
+      return possibleWorlds
+
+
    @property
    def prefix( self ):
-      return self.star.prefix + '{:-<4}'.format( str(self.orbit.number) )
+      return self.star.prefix + '{:-<4}'.format( str(self.orbit.number) + 's' )
    @property
    def name( self ):
+      primary = '(Primary) ' if self.is_main_world else ''
       firstLine =  '%s %s covered in %s water\n' % (
             self._sizes[ self.size ], self.body_type,
             self._hydrographies[ self.hydrography ] )
       secondLine = 'with %s atmosphere and %s intelligent beings' % (
              self._atmospheres[ self.atmosphere ], self._populations[ self.population ] )
-      return firstLine + self.prefix + '---- ' + secondLine
+      return primary + firstLine + self.prefix + '---- ' + secondLine
    @property
    def body_type( self ):
       return 'World'
@@ -1203,6 +1260,14 @@ class GasGiant( World ):
          self.orbits[-1].occupied = True
          self.orbits[-1].body = Satallite( self, self.orbits[-1], size )
 
+   def getPossibleMainWorlds( self ):
+      possibleWorlds = []
+      for o in self.orbits:
+         if o.body:
+            for world in o.body.getPossibleMainWorlds():
+               possibleWorlds.append( world )
+      return possibleWorlds
+
    @property
    def name( self ):
       return '%s %s' % ( self.size, self.body_type )
@@ -1224,6 +1289,7 @@ class Satallite( World ):
       self.star = world.star
       self.orbit = orbit
       self.size = size
+      self.is_main_world = False
 
       self._atmosphere()
       self._hydrography()
@@ -1296,7 +1362,8 @@ class Satallite( World ):
 
    @property
    def prefix( self ):
-      return self.world.prefix + '{:-<4}'.format( str(self.orbit.number) )
+      body = 'g' if isinstance( self.world, GasGiant ) else 'w'
+      return self.world.prefix + '{:-<4}'.format( str(self.orbit.number) + body )
 
    @property
    def body_type( self ):
