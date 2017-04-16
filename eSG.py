@@ -11,7 +11,7 @@ def D( dice ):
 
 class SolarSystem():
    def __init__( self,
-                 Stars=None,Planets=None, NaturalFeatures=None, TechFeatures=None,
+                  Stars=None,Planets=None, NaturalFeatures=None, TechFeatures=None,
                  InfraFeatures=None ):
       print "Generating SolarSystem"
       self.Stars = Stars or []
@@ -38,8 +38,10 @@ class SolarSystem():
       self.generateWorlds()
       self.generateSatallites()
       self.designateMainWorld()
-
-      self.primary_star.printBody()
+      
+      if self.primary_world:
+         print self.primary_world.fullName
+      #self.primary_star.printBody()
 
    def generateSystemRequirements( self, Stars, Planets, NaturalFeatures, 
                                    TechFeatures, InfraFeatures ):
@@ -98,7 +100,13 @@ class SolarSystem():
             mainWorld = possibleWorlds[0]
          mainWorld.is_main_world = True
          self.primary_world = mainWorld
-         print mainWorld.fullName
+
+      if self.primary_world:
+         self.primary_world.determineAdditionalCharacteristics()
+      for world in possibleWorlds:
+         if not world == self.primary_world:
+            world.determineAdditionalCharacteristics()
+
 
    def systemNature( self ):
       roll = D(2)
@@ -178,9 +186,12 @@ class Orbit(object):
          self.body.printBody()
    @property
    def prefix( self ):
+      bodyPrefix = ''
       if self.body:
-         return self.body.prefix
-      return '{:-<4}'.format( str( self.number ) + 's' )
+         bodyPrefix = self.body.prefix
+      if isinstance( self.star, BinaryStar ):
+         bodyPrefix = self.star.prefix + bodyPrefix
+      return bodyPrefix + '{:-<4}'.format( str( self.number ) + 's' + self.zone.lower() )
    @property
    def name( self ):
       if self.body == None and self.occupied:
@@ -206,7 +217,7 @@ class PlanetoidBelt( Orbit ):
    
    @property
    def prefix( self ):
-      return self.star.prefix + '{:-<4}'.format( str( self.number ) )
+      return self.star.prefix + '{:-<4}'.format( str( self.number ) + 's' + self.zone.lower() )
    @property
    def name( self ):
       zone = ''
@@ -837,7 +848,7 @@ class BinaryStar( Star ):
    orbit_roll_modifier = 0
 
    def __init__( self, primary_star=None ):
-      self.star = primary_star
+      self.star  = primary_star
       self.system_nature = 'solo'
       self.orbit = None
 
@@ -911,7 +922,8 @@ class BinaryStar( Star ):
 
    @property
    def prefix( self ):
-      return self.star.prefix + '{:-<4}'.format( str( self.orbit ) + 's' )
+      return self.star.prefix + '{:-<4}'.format( str( self.orbit ) + 's' + \
+             self.star.orbits[ self.orbit ].zone.lower() )
 
 class TrinaryStar( BinaryStar ):
    orbit_roll_modifier = 4
@@ -923,6 +935,11 @@ class PlanetoidBase( SolarObjectBase ):
       self.atmosphere = None
       self.hydrography = None
       self.population = None
+      self.government = 0
+      self.law = 0
+      self.star_port = 'X'
+      self.tech = 0
+      self.trade_classification = ''
       self.orbit = None
       self.deviation = 0
       self.is_main_world = False
@@ -1036,6 +1053,70 @@ class World( PlanetoidBase ):
          'billions of',
          'tens of billions of',
          ]
+   _governments = [
+         'no government ',
+         'company/corporation',
+         'participating democracy',
+         'self-perpetuating oligarchy',
+         'representitive democracy',
+         'feudal technocracy',
+         'captive government',
+         'balkanization',
+         'civil service bureaucracy',
+         'impersonal bureaucracy',
+         'charismatic dictator',
+         'non-charismatic leader',
+         'charismatic oligarchy',
+         'religious dictatorship',
+         ]
+   _laws = [
+         'a lawless',
+         'a nearly lawless',
+         'a somewhat lawless',
+         'a fairly moderate',
+         'a moderate',
+         'a moderately enforced',
+         'an enforced',
+         'a well enforced',
+         'a strongly enforced',
+         'an oppressive',
+         'a highly oppressive',
+         'an extremely oppressive',
+         ]
+   _star_ports = {}
+   _tech_mods = {
+         'starport'   : {
+               'A' :  6,
+               'B' :  4,
+               'C' :  2,
+               'D' :  0,
+               'E' :  0,
+               'X' : -4,
+            },
+         'size'       : [
+               2, 2, 1, 1, 1,
+               0, 0, 0, 0, 0, 0,
+            ],
+         'atmosphere' : [
+               1, 1, 1, 1,
+               0, 0, 0, 0, 0, 0,
+               1, 1, 1, 1, 1, 0,
+            ],
+         'hydrography': [
+               0, 0, 0, 0, 0, 0,
+               0, 0, 0, 1, 2,
+            ],
+         'population' : [
+               0, 1, 1, 1, 1, 1,
+               0, 0, 0, 2, 4,
+            ],
+         'government' : [
+               1, 0, 0, 0, 0, 1,
+               0, 0, 0, 0, 0, 0,
+               2, 0, 0,
+            ],
+      }
+
 
    def __init__( self, star, orbit, deviation=0 ):
       """ Generate A Random World inside  'zone' """
@@ -1178,21 +1259,100 @@ class World( PlanetoidBase ):
       return roll
 
 
+   def _government( self ):
+      self.government = min( max( 0, D(2) - 7 + self.population ), 13 )
+
+   def _law( self ):
+      self.law = min( max( 0, D(2) - 7 + self.government ), 11 )
+
+   def _starPort( self ):
+      roll = D(2)
+      star_port = 'X'
+      if roll < 5:
+         star_port = 'A'
+      elif roll < 7:
+         star_port = 'B'
+      elif roll < 9:
+         star_port = 'C'
+      elif roll < 10:
+         star_port = 'D'
+      elif roll < 12:
+         star_port = 'E'
+      self.star_port = star_port
+
+   def _tech( self ):
+      mod = 0
+      mod += self._tech_mods['starport'][self.star_port]
+      size = self.size if not ( self.size == 'R' or self.size == 'S' ) else 0
+      mod += self._tech_mods['size'][size]
+      mod += self._tech_mods['atmosphere'][self.atmosphere]
+      mod += self._tech_mods['hydrography'][self.hydrography]
+      mod += self._tech_mods['population'][self.population]
+      mod += self._tech_mods['government'][self.government]
+      self.tech = min( max( D(1) + mod, 0 ), 16 )
+
+   def _trade( self ):
+      def agricultural( self ):
+         atmo  = self.atmosphere  in range(4,10)
+         hydro = self.hydrography in range(4, 9)
+         pop   = self.population  in range(5, 8)
+         return 'agricultural ' if ( atmo and hydro and pop ) else ''
+      def nonagricultural( self ):
+         atmo  = self.atmosphere  <= 3
+         hydro = self.hydrography <= 3
+         pop   = self.population  >= 6
+         return 'non-agricultural ' if ( atmo and hydro and pop ) else ''
+      def industrial( self ):
+         atmo  = self.atmosphere  in [0,1,2,4,7,9]
+         pop   = self.population  >= 9
+         return 'industrial ' if ( atmo and pop ) else ''
+      def nonindustrial( self ):
+         return 'non-industrial ' if self.population <= 6 else ''
+      def rich( self ):
+         atmo  = self.atmosphere  in [6,8]
+         pop   = self.population  in range(6, 9)
+         govt  = self.government  in range(4,10)
+         return 'rich ' if ( atmo and pop and govt ) else ''
+      def poor( self ):
+         atmo  = self.atmosphere  in range(2, 6)
+         hydro = self.hydrography <= 3
+         return 'poor ' if ( atmo and hydro ) else ''
+      def waterWorld( self ):
+         return 'water ' if self.hydrography  == 10 else ''
+      def desertWorld ( self ):
+         atmo  = self.atmosphere  >= 2
+         hydro = self.hydrography == 0
+         return 'desert ' if ( atmo and hydro ) else ''
+      def vacuumWorld( self ):
+         return 'vacuum ' if self.atmosphere   ==  0 else ''
+      def asteroidBelt( self ):
+         return 'asteroid belt' if self.size  ==  0 else ''
+      def iceCapped( self ):
+         atmo  = self.atmosphere in [0,1]
+         hydro = self.hydrography >= 1
+         return 'ice-capped ' if ( atmo and hydro ) else ''
+      self.trade_classification = '%s%s%s%s%s%s%s%s%s%s' % (
+                                    rich( self ), poor( self ),
+                                    industrial( self ), nonindustrial( self ),
+                                    agricultural( self ), nonagricultural( self ),
+                                    vacuumWorld( self ), iceCapped( self ),
+                                    waterWorld( self ), desertWorld( self ) )
+         
    def determineAdditionalCharacteristics( self ):
       if self.is_main_world:
          self._government()
-         self._lawLevel()
-         self._starPortType()
-         self._techLevel()
-         self._tradeClassifications()
-         self._navalAndScoutBases()
-         self._majorRoutes()
-      else:
-         self._subordinateGovt()
-         self._subordinateLawLevel()
-         self._subordinateFacilities()
-         self._subordinateTechLevel()
-         self._spacePortType()
+         self._law()
+         self._starPort()
+         self._tech()
+         self._trade()
+         #self._navalAndScoutBases()
+         #self._majorRoutes()
+      #else:
+         #self._subordinateGovt()
+         #self._subordinateLawLevel()
+         #self._subordinateFacilities()
+         #self._subordinateTechLevel()
+         #self._spacePortType()
 
    def getPossibleMainWorlds( self ):
       possibleWorlds = super( World, self ).getPossibleMainWorlds()
@@ -1203,16 +1363,21 @@ class World( PlanetoidBase ):
 
    @property
    def prefix( self ):
-      return self.star.prefix + '{:-<4}'.format( str(self.orbit.number) + 's' )
+      return self.star.prefix + '{:-<4}'.format( str( self.orbit.number ) + 's' +
+                                                 self.orbit.zone.lower() )
    @property
    def name( self ):
-      primary = '(Primary) ' if self.is_main_world else ''
-      firstLine =  '%s %s covered in %s water\n' % (
-            self._sizes[ self.size ], self.body_type,
+      primary = '(Primary TL%d) ' % self.tech if self.is_main_world else ''
+      firstLine =  '%s %s%s covered in %s water\n' % (
+            self._sizes[ self.size ], self.trade_classification, self.body_type,
             self._hydrographies[ self.hydrography ] )
-      secondLine = 'with %s atmosphere and %s intelligent beings' % (
+      secondLine = 'with %s atmosphere and %s intelligent beings\n' % (
              self._atmospheres[ self.atmosphere ], self._populations[ self.population ] )
-      return primary + firstLine + self.prefix + '---- ' + secondLine
+      thirdLine = 'ruled by %s %s' % ( self._laws[ self.law ], self._governments[ self.government ] )
+      return primary + firstLine + self.prefix + \
+                     '---- ' + secondLine + self.prefix + \
+                     '---- ' + thirdLine
+               
    @property
    def body_type( self ):
       return 'World'
@@ -1284,6 +1449,12 @@ class Satallite( World ):
       self.atmosphere = None
       self.hydrography = None
       self.population = None
+      self.government = 0
+
+      self.law = 0
+      self.star_port = 'X'
+      self.tech = 0
+      self.trade_classification = ''
 
       self.world = world
       self.star = world.star
@@ -1373,6 +1544,19 @@ def test():
    for x in range( 100 ):
       s = SolarSystem()
 
+def tech_test():
+   test_lvls = [ x for x in range( 17 ) ]
+   x = 0
+   while test_lvls:
+      x += 1
+      s = SolarSystem()
+      lvls = copy.copy( test_lvls )
+      for lvl in lvls:
+         if s.primary_world:
+            if s.primary_world.tech == lvl:
+               test_lvls.remove( lvl )
+   print x
+
 def systemNature():
    roll = D(2)
    if roll < 8:
@@ -1387,3 +1571,4 @@ def createStars( system_nature ):
 
 if __name__ == '__main__':
    test()
+   #tech_test()
