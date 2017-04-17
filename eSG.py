@@ -1,5 +1,5 @@
 from argparse import ArgumentParser
-import random, copy
+import random, copy, json, pprint
 
 def D( dice ):
    result = 0
@@ -13,7 +13,7 @@ class SolarSystem():
    def __init__( self,
                   Stars=None,Planets=None, NaturalFeatures=None, TechFeatures=None,
                  InfraFeatures=None ):
-      print "Generating SolarSystem"
+      #print "Generating SolarSystem"
       self.Stars = Stars or []
       self.Planets = Planets or []
       self.NaturalFeatures = NaturalFeatures or []
@@ -39,8 +39,8 @@ class SolarSystem():
       self.generateSatallites()
       self.designateMainWorld()
       
-      if self.primary_world:
-         print self.primary_world.fullName
+      #if self.primary_world:
+      #   print self.primary_world.fullName
       #self.primary_star.printBody()
 
    def generateSystemRequirements( self, Stars, Planets, NaturalFeatures, 
@@ -103,7 +103,7 @@ class SolarSystem():
 
       if self.primary_world:
          self.primary_world.determineAdditionalCharacteristics()
-      for world in possibleWorlds:
+      for world in self.primary_star.getPossibleMainWorlds():
          if not world == self.primary_world:
             world.determineAdditionalCharacteristics()
 
@@ -184,6 +184,10 @@ class Orbit(object):
          print self.name
       if self.body:
          self.body.printBody()
+   def getJson( self ):
+      if self.body:
+         return self.body.getJson()
+      return {}
    @property
    def prefix( self ):
       bodyPrefix = ''
@@ -228,6 +232,13 @@ class PlanetoidBelt( Orbit ):
       return '%splanetoid belt' % zone
    def printBody( self ):
       print self.prefix, self.name
+   def getJson( self ):
+      return { 'planetoid belt' : {
+                     'zone' : self.zone,
+                     'occupied' : self.occupied,
+                  } 
+             }
+
 
 class SolarObjectBase(object):
    def __init__( self, reqs={} ):
@@ -248,6 +259,11 @@ class SolarObjectBase(object):
       print self.prefix, self.name
       for o in self.orbits:
          o.printBody()
+   def getJson( self ):
+      data = {}
+      for o in self.orbits:
+         data.update( { o.number : o.getJson() } )
+      return { self.name : data }
 
    @property
    def fullName( self ):
@@ -257,7 +273,7 @@ class SolarObjectBase(object):
       return "%s" % self.body_type
    @property
    def body_type( self ):
-      return None
+      return 'solarobjectbase'
 
 class Star( SolarObjectBase ):
    _star_types = {
@@ -785,7 +801,7 @@ class Star( SolarObjectBase ):
 
    @property
    def name( self ):
-      return '%s %s(%s) %s' % ( self._star_sizes[ self.size ],
+      return '%s %s(%s)  %s' % ( self._star_sizes[ self.size ],
                                self._star_types[ self.star_type ], 
                                self.star_class, self.body_type )
    @property
@@ -839,6 +855,11 @@ class PrimaryStar( Star ):
       print self.name
       for o in self.orbits:
          o.printBody()
+   def getJson( self ):
+      data = {}
+      for o in self.orbits:
+         data.update( { o.number : o.getJson() } )
+      return { self.name : data }
 
    @property
    def prefix( self ):
@@ -848,7 +869,7 @@ class BinaryStar( Star ):
    orbit_roll_modifier = 0
 
    def __init__( self, primary_star=None ):
-      self.star  = primary_star
+      self.star  = primary_star 
       self.system_nature = 'solo'
       self.orbit = None
 
@@ -936,10 +957,16 @@ class PlanetoidBase( SolarObjectBase ):
       self.hydrography = None
       self.population = None
       self.government = 0
+
       self.law = 0
       self.star_port = 'X'
+      self.space_port = 'Y'
       self.tech = 0
       self.trade_classification = ''
+      self.scout_base = False
+      self.naval_base = False
+      self.facilities = []
+      
       self.orbit = None
       self.deviation = 0
       self.is_main_world = False
@@ -975,7 +1002,28 @@ class PlanetoidBase( SolarObjectBase ):
       print self.prefix, self.name
       for orbit in sorted( self.orbits, key=lambda orbit: orbit.number ):
          orbit.printBody()
-
+   def getJson( self ):
+      data = {
+            'size'        : self.size,
+            'atmosphere'  : self.atmosphere,
+            'hydrography' : self.hydrography,
+            'population'  : self.population,
+            'government'  : self.government,
+            'law'         : self.law,
+            'starport'    : self.star_port,
+            'spaceport'   : self.space_port,
+            'tech'        : self.tech,
+            'trade_class' : self.trade_classification,
+            'scout_base'  : self.scout_base,
+            'naval_base'  : self.naval_base,
+            'facilities'  : self.facilities,
+            'deviation'   : self.deviation,
+            'main_world'  : self.is_main_world,
+         }
+      for orbit in sorted( self.orbits, key=lambda orbit: orbit.number ):
+         data.update( { orbit.number : orbit.getJson() } )
+      return { self.body_type : data }
+      
    @property
    def primaryOrbit( self ):
       if hasattr( self.star, 'orbit' ):
@@ -1054,8 +1102,8 @@ class World( PlanetoidBase ):
          'tens of billions of',
          ]
    _governments = [
-         'no government ',
-         'company/corporation',
+         'no government',
+         'company',
          'participating democracy',
          'self-perpetuating oligarchy',
          'representitive democracy',
@@ -1082,8 +1130,21 @@ class World( PlanetoidBase ):
          'an oppressive',
          'a highly oppressive',
          'an extremely oppressive',
-         ]
-   _star_ports = {}
+          ]
+   _star_ports = {
+         'A' : 'an excellent quality starport',
+         'B' : 'a good quality starport',
+         'C' : 'a routine quality starport',
+         'D' : 'a poor quality starport',
+         'E' : 'a frontier installation',
+         'X' : 'no starport',
+      }
+   _space_ports = {
+         'F' : 'a good quality spaceport',
+         'G' : 'a poor quality spaceport',
+         'H' : 'primitive facilities',
+         'Y' : 'no spaceport',
+      }
    _tech_mods = {
          'starport'   : {
                'A' :  6,
@@ -1337,7 +1398,129 @@ class World( PlanetoidBase ):
                                     agricultural( self ), nonagricultural( self ),
                                     vacuumWorld( self ), iceCapped( self ),
                                     waterWorld( self ), desertWorld( self ) )
+
+   def _bases( self ):
+      mod = 0
+      scout = False
+      naval = False
+      if self.star_port == 'C':
+         mod = -1
+      if self.star_port == 'B':
+         mod = -2
+      if self.star_port == 'A':
+         mod = -3
+      if not self.star_port in ['E','X']:
+         roll = D(2) + mod
+         if roll >= 7:
+            scout = True
+         if not self.star_port in ['C','D']:
+            roll = D(2)
+            if roll >= 8:
+               naval = True
+      self.scout_base = scout
+      self.naval_base = naval
+
+   def _subGovt( self ):
+      roll = D(1)
+      if self.main_world.government == 6:
+         roll = 6
+      if self.main_world.government >= 7:
+         roll = roll + 1
          
+      if roll >= 5:
+         govt = 6
+      else:
+         govt = roll - 1
+
+      if self.population == 0:
+         govt = 0
+      self.government = govt
+
+   def _subLaw( self ):
+      roll = D(1) - 3 + self.main_world.law
+      if self.population == 0:
+         roll = 0
+      self.law = min( max( roll, 0 ), 11 )
+
+   def _subFacilities( self ):
+      def farming( self ):
+         zone  = self.orbit.zone == 'H'
+         atmo  = self.atmosphere in range(4,10)
+         hydro = self.hydrography in range(4,9)
+         pop   = self.population >= 2
+         return ( zone and atmo and hydro and pop )
+      def mining( self ):
+         main_trade = self.main_world.trade_classification.split()
+         for trade in main_trade:
+            if 'industrial' == trade:
+               if self.population >= 2:
+                  return True
+         return False
+      def colony( self ):
+         govt = self.government == 6
+         pop  = self.population >= 5
+         return ( govt and pop )
+      def research( self ):
+         roll = D(2)
+         if self.main_world.tech >= 10:
+            roll = roll + 2
+         if self.main_world.tech <= 8 or self.population == 0:
+            roll = 0
+         if roll >= 11:
+            return True
+         return False
+      def military( self ):
+         roll = D(2)
+         if self.main_world.population >= 8:
+            roll = roll + 1
+         if self.main_world.atmosphere == self.atmosphere:
+            roll = roll + 2
+         if self.main_world.naval_base or self.main_world.scout_base:
+            roll = roll + 1
+         if self.population == 0:
+            roll = 0
+         main_trade = self.main_world.trade_classification.split()
+         for trade in main_trade:
+            if 'poor' == trade:
+               roll = 0
+         if roll >= 12:
+            return True
+         return False
+      facilities = []
+      if farming( self ):
+         facilities.append( 'farming' )
+      if mining( self ):
+         facilities.append( 'mining' )
+      if colony( self ):
+         facilities.append( 'colony' )
+      if research( self ):
+         facilities.append( 'research' )
+      if military( self ):
+         facilities.append( 'military' )
+      self.facilities = facilities
+
+   def _subTech( self ):
+      self.tech = self.main_world.tech - 1
+      if 'military' in self.facilities or 'research' in self.facilities:
+         self.tech = self.tech + 1
+
+   def _spacePort( self ):
+      roll = D(1)
+      if self.population >= 6:
+         roll = roll + 2
+      if self.population <= 1:
+         roll = roll - 2
+      roll = min( max( roll, 1 ), 6 )
+      if roll < 3:
+         space_port = 'Y'
+      elif roll < 4:
+         space_port = 'H'
+      elif roll < 6:
+         space_port = 'G'
+      else:
+         space_port = 'F'
+      self.space_port = space_port
+
    def determineAdditionalCharacteristics( self ):
       if self.is_main_world:
          self._government()
@@ -1345,14 +1528,13 @@ class World( PlanetoidBase ):
          self._starPort()
          self._tech()
          self._trade()
-         #self._navalAndScoutBases()
-         #self._majorRoutes()
-      #else:
-         #self._subordinateGovt()
-         #self._subordinateLawLevel()
-         #self._subordinateFacilities()
-         #self._subordinateTechLevel()
-         #self._spacePortType()
+         self._bases()
+      else:
+         self._subGovt()
+         self._subLaw()
+         self._subFacilities()
+         self._subTech()
+         self._spacePort()
 
    def getPossibleMainWorlds( self ):
       possibleWorlds = super( World, self ).getPossibleMainWorlds()
@@ -1360,6 +1542,17 @@ class World( PlanetoidBase ):
          possibleWorlds.append( self )
       return possibleWorlds
 
+
+   @property
+   def main_world( self ):
+      if self.is_main_world:
+         return self
+      else:
+         if isinstance( self.star, BinaryStar ):
+            primary_world = [ x for x in self.star.star.getPossibleMainWorlds() if x.is_main_world ][0]
+         else:
+            primary_world = [ x for x in self.star.getPossibleMainWorlds() if x.is_main_world ][0]
+         return primary_world
 
    @property
    def prefix( self ):
@@ -1373,10 +1566,31 @@ class World( PlanetoidBase ):
             self._hydrographies[ self.hydrography ] )
       secondLine = 'with %s atmosphere and %s intelligent beings\n' % (
              self._atmospheres[ self.atmosphere ], self._populations[ self.population ] )
-      thirdLine = 'ruled by %s %s' % ( self._laws[ self.law ], self._governments[ self.government ] )
+
+      thirdLine = 'ruled by %s %s with %s' % ( self._laws[ self.law ],
+                                               self._governments[ self.government ],
+                                               self._star_ports[ self.star_port ] )
+      fourthLine = ''
+
+      bases = ''
+      if self.scout_base and self.naval_base:
+         bases = 'supporting scout and naval presence'
+      elif self.scout_base:
+         bases = 'supporting scout presence'
+      elif self.naval_base:
+         bases = 'supporting naval presence'
+      if bases:
+         fourthLine = '\n' + self.prefix + '---- ' + bases
+
+      facility_str = ''
+      if self.facilities:
+         facility_str = 'with facilities for ' + ','.join( self.facilities ) 
+      if facility_str:
+         fourthLine = '\n' + self.prefix + '---- ' + facility_str
+
       return primary + firstLine + self.prefix + \
                      '---- ' + secondLine + self.prefix + \
-                     '---- ' + thirdLine
+                     '---- ' + thirdLine + fourthLine
                
    @property
    def body_type( self ):
@@ -1453,8 +1667,12 @@ class Satallite( World ):
 
       self.law = 0
       self.star_port = 'X'
+      self.space_port = 'Y'
       self.tech = 0
       self.trade_classification = ''
+      self.scout_base = False
+      self.naval_base = False
+      self.facilities = []
 
       self.world = world
       self.star = world.star
@@ -1543,8 +1761,9 @@ class Satallite( World ):
 def test():
    for x in range( 100 ):
       s = SolarSystem()
+      s.primary_star.printBody()
 
-def tech_test():
+def test_tech():
    test_lvls = [ x for x in range( 17 ) ]
    x = 0
    while test_lvls:
@@ -1555,7 +1774,81 @@ def tech_test():
          if s.primary_world:
             if s.primary_world.tech == lvl:
                test_lvls.remove( lvl )
-   print x
+   print '*** techs found in: %d systems' % x 
+
+def test_law():
+   test_lvls = [ x for x in range( 12 ) ]
+   x = 0
+   while test_lvls:
+      x += 1
+      s = SolarSystem()
+      lvls = copy.copy( test_lvls )
+      for lvl in lvls:
+         if s.primary_world:
+            if s.primary_world.law == lvl:
+               test_lvls.remove( lvl )
+   print '*** laws found in: %d systems' % x
+
+
+def test_star_port():
+   test_lvls = [  'A','B','C','D','E','X']
+   x = 0
+   while test_lvls:
+      x += 1
+      s = SolarSystem()
+      lvls = copy.copy( test_lvls )
+      for lvl in lvls:
+         if s.primary_world:
+            if s.primary_world.star_port == lvl:
+               test_lvls.remove( lvl )
+   print '*** star ports found in: %d systems' % x
+
+def test_trade():
+   test_lvls = ['rich','poor','agricultural','non-agricultural','vacuum',
+                'desert','water','ice-capped', 'industrial', 'non-industrial' ]
+   x = 0
+   while test_lvls:
+      x += 1
+      s = SolarSystem()
+      lvls = copy.copy( test_lvls )
+      for lvl in lvls:
+         if s.primary_world:
+            trades = s.primary_world.trade_classification.split()
+            for trade in trades:
+               if trade == lvl:
+                  #print s.primary_world.fullName
+                  test_lvls.remove( lvl )
+   print '*** trade classifications found in: %d systems' % x
+
+def test_facilities():
+   test_lvls = ['military','research','colony','mining','farming']
+   x = 0
+   while test_lvls:
+      x += 1
+      s = SolarSystem()
+      lvls = copy.copy( test_lvls )
+      for lvl in lvls:
+         worlds = s.primary_star.getPossibleMainWorlds()
+         for world in worlds:
+            for facility in world.facilities:
+               #print world.facilities
+               if facility == lvl:
+                  try:
+                     test_lvls.remove( lvl )
+                  except Exception as e:
+                     pass
+   print '*** facilities found in: %d systems' % x
+   
+def test_world():
+   print "Staring main world checks:"
+   test_tech()
+   test_law()
+   test_star_port()
+   test_trade()
+
+def test_other_worlds():
+   print "Starting other worlds checks:"
+   test_facilities()
 
 def systemNature():
    roll = D(2)
@@ -1569,6 +1862,19 @@ def systemNature():
 def createStars( system_nature ):
    return PrimaryStar( system_nature )
 
+def test_json():
+   for x in range( 100 ):
+      s = SolarSystem()
+      data = s.primary_star.getJson()
+      pprint.pprint(data)
+
+   #with open( 'data.json', 'w' ) as outfile:
+   #   json.dump( data, outfile )
+
 if __name__ == '__main__':
    test()
-   #tech_test()
+   #test_world()
+   #test_other_worlds()
+   
+   #test_json()
+
