@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from argparse import ArgumentParser
 import random, copy, json, pprint
 
@@ -1838,6 +1840,41 @@ def test_facilities():
                   except Exception as e:
                      pass
    print '*** facilities found in: %d systems' % x
+
+class Container(object):
+   _items = []
+   def __init__( self, items=None ):
+      if items:
+         assert type( items ) == list
+      self.items = items
+
+   def __getattribute__( self, attr ):
+      """ Always return the name of the attribute as value 
+          Assert that this attr is in the set of generatable items
+      """
+      if attr in ['items', '_items']:
+         return object.__getattribute__( self, attr )
+      assert attr in (self.items or self._items), attr + " not in valid options: %s" % \
+                                                         str( (self.items or self._items) )
+      return attr
+
+class Facilities(Container):
+   _items = ['military','research','colony','mining','farming']
+
+def get_facility( facility ):
+   facilities = Facilities()
+   assert facility in facilities._items
+   x = 0
+   while True:
+      x += 1
+      s = SolarSystem()
+      worlds = s.primary_star.getPossibleMainWorlds()
+      for world in worlds:
+         for f in world.facilities:
+	    if f == facility:	  
+               print '*** facility found in: %d systems' % x
+               return s
+   return None
    
 def test_world():
    print "Staring main world checks:"
