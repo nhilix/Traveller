@@ -14,6 +14,7 @@ Key:
 [orbital number][(s)tar,(w)orld,(g)as giant][(i)nner,(h)abitable,(o)uter]
 
 python eSG.py
+```
 main sequence orange(K0)  Star
 0si- 2000mi radius World covered in 0% water
 0si----- with no atmosphere and hundreds of intelligent beings
@@ -48,6 +49,6 @@ main sequence orange(K0)  Star
 11so
 12so
 13so
-
+```
 
 
